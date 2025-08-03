@@ -1,8 +1,21 @@
+import os
 import telebot
 import requests
+from flask import Flask
+import threading
 
-bot = telebot.TeleBot("8476282944:AAE81Ts6opAMHczXf2q9hEeB7-DRgvWXRqM")  # вставь сюда свой новый токен
+# Берём токен из переменной окружения BOT_TOKEN
+TOKEN = os.getenv("BOT_TOKEN")
+bot = telebot.TeleBot(TOKEN)
 
+app = Flask(__name__)
+
+# Эндпоинт для Uptimer.dev
+@app.route('/')
+def home():
+    return "I'm alive!", 200
+
+# Команда /start
 @bot.message_handler(commands=['start'])
 def start(message):
     bot.send_message(
@@ -17,6 +30,7 @@ def start(message):
 3️⃣ Получите своё видео в чистом виде'''
     )
 
+# Обработка всех сообщений (TikTok-ссылки)
 @bot.message_handler(func=lambda m: True)
 def download_tiktok(message):
     url = message.text.strip()
@@ -36,13 +50,16 @@ def download_tiktok(message):
 
         if response.get("data") and response["data"].get("play"):
             video_url = response["data"]["play"]
-
-            # Отправляем видео напрямую пользователю
             bot.send_video(message.chat.id, video_url, caption="⚡️ Скачано через:\n@downloader52bot")
         else:
             bot.send_message(message.chat.id, "⚠️ Не удалось получить видео. Попробуй другую ссылку.")
-
     except Exception as e:
         bot.send_message(message.chat.id, f"⚠️ Ошибка: {e}")
 
-bot.polling()
+# Функция для запуска бота
+def start_bot():
+    bot.polling(none_stop=True)
+
+if __name__ == "__main__":
+    threading.Thread(target=start_bot).start()
+    app.run(host="0.0.0.0", port=10000)
