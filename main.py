@@ -25,7 +25,7 @@ def download_tiktok(message):
     url = message.text.strip()
 
     if "tiktok.com" not in url:
-        bot.send_message(message.chat.id, '''⚠ Некорректная ссылка TikTok
+        bot.send_message(message.chat.id, '''⚠ ННекорректная ссылка TikTok
 
 Чтобы скачать видео, пришлите ссылку в формате:
 🔗 https://vm.tiktok.com/XXXXXXX/
