@@ -1,19 +1,23 @@
 import os
 import telebot
 import requests
-from flask import Flask
-import threading
+from flask import Flask, request
 
-# Берём токен из переменной окружения BOT_TOKEN
 TOKEN = os.getenv("BOT_TOKEN")
 bot = telebot.TeleBot(TOKEN)
 
 app = Flask(__name__)
 
-# Эндпоинт для Uptimer.dev
 @app.route('/')
 def home():
     return "I'm alive!", 200
+
+@app.route(f'/{TOKEN}', methods=['POST'])
+def webhook():
+    json_str = request.get_data().decode('UTF-8')
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return '', 200
 
 # Команда /start
 @bot.message_handler(commands=['start'])
@@ -30,7 +34,7 @@ def start(message):
 3️⃣ Получите своё видео в чистом виде'''
     )
 
-# Обработка всех сообщений (TikTok-ссылки)
+# Обработка ссылок
 @bot.message_handler(func=lambda m: True)
 def download_tiktok(message):
     url = message.text.strip()
@@ -56,10 +60,9 @@ def download_tiktok(message):
     except Exception as e:
         bot.send_message(message.chat.id, f"⚠️ Ошибка: {e}")
 
-# Функция для запуска бота
-def start_bot():
-    bot.polling(none_stop=True)
-
 if __name__ == "__main__":
-    threading.Thread(target=start_bot).start()
+    # Устанавливаем Webhook
+    WEBHOOK_URL = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"
+    bot.remove_webhook()
+    bot.set_webhook(url=WEBHOOK_URL)
     app.run(host="0.0.0.0", port=10000)
