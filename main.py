@@ -78,8 +78,6 @@ def start(message):
 
     # Если подписан
     save_user(user_id)
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add(types.KeyboardButton("📊 Статистика"))
 
     bot.send_message(
         user_id,
