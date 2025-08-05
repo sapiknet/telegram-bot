@@ -20,14 +20,12 @@ else:
     users = set()
 
 def save_user(user_id):
-    """Добавляем пользователя и сохраняем в файл"""
     if str(user_id) not in users:
         users.add(str(user_id))
         with open(USERS_FILE, "a") as f:
             f.write(f"{user_id}\n")
 
 def is_subscribed(user_id):
-    """Проверяем подписку на канал и выводим статус в консоль"""
     try:
         member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
         status = member.status
