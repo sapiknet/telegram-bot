@@ -1,7 +1,6 @@
 import os
 import telebot
 import requests
-import sqlite3
 from flask import Flask, request
 from telebot import types
 
@@ -11,35 +10,12 @@ bot = telebot.TeleBot(TOKEN)
 
 app = Flask(__name__)
 
-# -------------------- БАЗА ДАННЫХ --------------------
-
-DB_FILE = "users.db"
-
-# Создаем таблицу пользователей, если её нет
-conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-cursor = conn.cursor()
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    user_id INTEGER PRIMARY KEY
-)
-""")
-conn.commit()
-
-def save_user(user_id):
-    cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
-    conn.commit()
-
-def get_user_count():
-    cursor.execute("SELECT COUNT(*) FROM users")
-    return cursor.fetchone()[0]
-
 # -------------------- ПРОВЕРКА ПОДПИСКИ --------------------
 
 def is_subscribed(user_id):
     try:
         member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
-        status = member.status
-        return status in ["member", "administrator", "creator"]
+        return member.status in ["member", "administrator", "creator"]
     except Exception:
         return False
 
@@ -62,12 +38,13 @@ def webhook():
 def start(message):
     user_id = message.chat.id
 
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(
+        types.InlineKeyboardButton("🔗 Подписаться на канал", url=f"https://t.me/{CHANNEL_USERNAME[1:]}"),
+        types.InlineKeyboardButton("✅ Проверить подписку", callback_data="check_subscribe")
+    )
+
     if not is_subscribed(user_id):
-        keyboard = types.InlineKeyboardMarkup()
-        keyboard.add(
-            types.InlineKeyboardButton("🔗 Подписаться на канал", url=f"https://t.me/{CHANNEL_USERNAME[1:]}"),
-            types.InlineKeyboardButton("✅ Проверить подписку", callback_data="check_subscribe")
-        )
         bot.send_message(
             user_id,
             f"👋 Привет! Чтобы пользоваться ботом, подпишись на наш канал {CHANNEL_USERNAME}.\n"
@@ -76,36 +53,27 @@ def start(message):
         )
         return
 
-    # Если подписан
-    save_user(user_id)
-
     bot.send_message(
         user_id,
         '''🎉 Добро пожаловать в TikTok Saver!
 
 ✨ Отправь мне ссылку на TikTok — я скачаю видео или фото без водяного знака.
 ''',
-        reply_markup=keyboard
     )
 
 # Проверка подписки
 @bot.callback_query_handler(func=lambda call: call.data == "check_subscribe")
 def check_subscribe(call):
     user_id = call.message.chat.id
+
     if is_subscribed(user_id):
-        save_user(user_id)
-        bot.send_message(
-            user_id,
+        bot.edit_message_text(
             "✅ Отлично! Подписка подтверждена.\nМожешь отправлять ссылки на TikTok.",
-            reply_markup=keyboard
+            chat_id=user_id,
+            message_id=call.message.message_id
         )
     else:
         bot.answer_callback_query(call.id, "❌ Вы ещё не подписаны!")
-
-# Кнопка "Статистика"
-@bot.message_handler(func=lambda m: m.text == "📊 Статистика")
-def stats(message):
-    bot.send_message(message.chat.id, f"👥 Всего пользователей бота: {get_user_count()}")
 
 # -------------------- ОБРАБОТКА ССЫЛОК --------------------
 
@@ -113,12 +81,19 @@ def stats(message):
 def download_tiktok(message):
     user_id = message.chat.id
 
-    # Проверяем подписку
     if not is_subscribed(user_id):
-        bot.send_message(user_id, "❌ Сначала подпишись на канал, чтобы пользоваться ботом.")
+        keyboard = types.InlineKeyboardMarkup()
+        keyboard.add(
+            types.InlineKeyboardButton("🔗 Подписаться на канал", url=f"https://t.me/{CHANNEL_USERNAME[1:]}"),
+            types.InlineKeyboardButton("✅ Проверить подписку", callback_data="check_subscribe")
+        )
+        bot.send_message(
+            user_id,
+            "❌ Сначала подпишись на канал, чтобы пользоваться ботом.",
+            reply_markup=keyboard
+        )
         return
 
-    save_user(user_id)
     url = message.text.strip()
 
     if "tiktok.com" not in url:
@@ -134,25 +109,22 @@ def download_tiktok(message):
 
     try:
         api_url = f"https://www.tikwm.com/api/?url={url}"
-        response = requests.get(api_url, timeout=10).json()
-        data = response.get("data", {})
+        response = requests.get(api_url, timeout=10)
+        response.raise_for_status()
+        data = response.json().get("data", {})
 
-        # 1️⃣ Видео
         if data.get("play"):
             bot.send_video(
                 user_id,
                 data["play"],
                 caption="⚡️ Скачано через:\n@downloader52bot"
             )
-
-        # 2️⃣ Фото-пост
         elif data.get("images"):
             media_group = [
                 telebot.types.InputMediaPhoto(img)
                 for img in data["images"]
             ]
             bot.send_media_group(user_id, media_group)
-
         else:
             bot.send_message(user_id, "⚠️ Не удалось получить медиа.")
 
