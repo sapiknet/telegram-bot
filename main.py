@@ -130,7 +130,7 @@ def download_tiktok(message):
         response = requests.get(api_url, timeout=10).json()
         data = response.get("data", {})
 
-        # 1️⃣ Видео
+                # 1️⃣ Видео
         if data.get("play"):
             bot.send_video(
                 user_id,
@@ -140,9 +140,20 @@ def download_tiktok(message):
             return
 
         # 2️⃣ Фото-пост (Photo Mode)
-        if data.get("images"):
+        images = data.get("images") or []
+
+        # Если images пустой, но есть cover и video_list — пробуем вытащить кадры
+        if not images:
+            if data.get("origin_cover"):
+                images.append(data["origin_cover"])
+            elif data.get("video_list"):
+                for item in data["video_list"]:
+                    if "url" in item:
+                        images.append(item["url"])
+
+        if images:
             media_group = []
-            for idx, img in enumerate(data["images"]):
+            for idx, img in enumerate(images):
                 media_group.append(
                     telebot.types.InputMediaPhoto(media=img, caption="📸 Фото с TikTok" if idx == 0 else "")
                 )
@@ -154,7 +165,7 @@ def download_tiktok(message):
             bot.send_audio(
                 user_id,
                 data["music"],
-                caption="🎵 Только звук, видео недоступно"
+                caption="🎵 Только звук, фото не удалось получить"
             )
             return
 
