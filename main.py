@@ -94,8 +94,6 @@ def check_subscribe(call):
     user_id = call.message.chat.id
     if is_subscribed(user_id):
         save_user(user_id)
-        keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        keyboard.add(types.KeyboardButton("📊 Статистика"))
         bot.send_message(
             user_id,
             "✅ Отлично! Подписка подтверждена.\nМожешь отправлять ссылки на TikTok.",
