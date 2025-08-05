@@ -27,11 +27,14 @@ def save_user(user_id):
             f.write(f"{user_id}\n")
 
 def is_subscribed(user_id):
-    """Проверяем подписку на канал"""
+    """Проверяем подписку на канал и выводим статус в консоль"""
     try:
         member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
-        return member.status in ["member", "administrator", "creator"]
-    except:
+        status = member.status
+        print(f"[DEBUG] Пользователь {user_id} статус в канале: {status}")
+        return status in ["member", "administrator", "creator"]
+    except Exception as e:
+        print(f"[DEBUG] Ошибка проверки подписки: {e}")
         return False
 
 @app.route('/')
