@@ -1,6 +1,7 @@
 import os
 import telebot
 import requests
+import sqlite3
 from flask import Flask, request
 from telebot import types
 
@@ -10,30 +11,39 @@ bot = telebot.TeleBot(TOKEN)
 
 app = Flask(__name__)
 
-USERS_FILE = "users.txt"
+# -------------------- БАЗА ДАННЫХ --------------------
 
-# Загружаем пользователей при запуске
-if os.path.exists(USERS_FILE):
-    with open(USERS_FILE, "r") as f:
-        users = set(f.read().splitlines())
-else:
-    users = set()
+DB_FILE = "users.db"
+
+# Создаем таблицу пользователей, если её нет
+conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+cursor = conn.cursor()
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    user_id INTEGER PRIMARY KEY
+)
+""")
+conn.commit()
 
 def save_user(user_id):
-    if str(user_id) not in users:
-        users.add(str(user_id))
-        with open(USERS_FILE, "a") as f:
-            f.write(f"{user_id}\n")
+    cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
+    conn.commit()
+
+def get_user_count():
+    cursor.execute("SELECT COUNT(*) FROM users")
+    return cursor.fetchone()[0]
+
+# -------------------- ПРОВЕРКА ПОДПИСКИ --------------------
 
 def is_subscribed(user_id):
     try:
         member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
         status = member.status
-        print(f"[DEBUG] Пользователь {user_id} статус в канале: {status}")
         return status in ["member", "administrator", "creator"]
-    except Exception as e:
-        print(f"[DEBUG] Ошибка проверки подписки: {e}")
+    except Exception:
         return False
+
+# -------------------- FLASK --------------------
 
 @app.route('/')
 def home():
@@ -46,7 +56,8 @@ def webhook():
     bot.process_new_updates([update])
     return '', 200
 
-# Команда /start
+# -------------------- ОБРАБОТКА КОМАНД --------------------
+
 @bot.message_handler(commands=['start'])
 def start(message):
     user_id = message.chat.id
@@ -74,12 +85,12 @@ def start(message):
         user_id,
         '''🎉 Добро пожаловать в TikTok Saver!
 
-✨ Отправь мне ссылку ТикТок, а я тебе этот видос! 
+✨ Отправь мне ссылку на TikTok — я скачаю видео или фото без водяного знака.
 ''',
         reply_markup=keyboard
     )
 
-# Проверка подписки после нажатия кнопки
+# Проверка подписки
 @bot.callback_query_handler(func=lambda call: call.data == "check_subscribe")
 def check_subscribe(call):
     user_id = call.message.chat.id
@@ -98,9 +109,10 @@ def check_subscribe(call):
 # Кнопка "Статистика"
 @bot.message_handler(func=lambda m: m.text == "📊 Статистика")
 def stats(message):
-    bot.send_message(message.chat.id, f"👥 Всего пользователей бота: {len(users)}")
+    bot.send_message(message.chat.id, f"👥 Всего пользователей бота: {get_user_count()}")
 
-# Обработка ссылок TikTok
+# -------------------- ОБРАБОТКА ССЫЛОК --------------------
+
 @bot.message_handler(func=lambda m: True)
 def download_tiktok(message):
     user_id = message.chat.id
@@ -118,10 +130,9 @@ def download_tiktok(message):
             user_id,
             '''⚠ Некорректная ссылка TikTok
 
-Чтобы я отправил тебе это, пришли ссылку в формате:
+Пришли ссылку в формате:
 🔗 https://vm.tiktok.com/XXXXXXX/
-
-💡 Совет: скопируй ссылку через кнопку «Поделиться» → «Копировать ссылку» в приложении TikTok.'''
+'''
         )
         return
 
@@ -130,54 +141,34 @@ def download_tiktok(message):
         response = requests.get(api_url, timeout=10).json()
         data = response.get("data", {})
 
-                # 1️⃣ Видео
+        # 1️⃣ Видео
         if data.get("play"):
             bot.send_video(
                 user_id,
                 data["play"],
                 caption="⚡️ Скачано через:\n@downloader52bot"
             )
-            return
 
-        # 2️⃣ Фото-пост (Photo Mode)
-        images = data.get("images") or []
-
-        # Если images пустой, но есть cover и video_list — пробуем вытащить кадры
-        if not images:
-            if data.get("origin_cover"):
-                images.append(data["origin_cover"])
-            elif data.get("video_list"):
-                for item in data["video_list"]:
-                    if "url" in item:
-                        images.append(item["url"])
-
-        if images:
-            media_group = []
-            for idx, img in enumerate(images):
-                media_group.append(
-                    telebot.types.InputMediaPhoto(media=img, caption="📸 Фото с TikTok" if idx == 0 else "")
-                )
+        # 2️⃣ Фото-пост
+        elif data.get("images"):
+            media_group = [
+                telebot.types.InputMediaPhoto(img)
+                for img in data["images"]
+            ]
             bot.send_media_group(user_id, media_group)
-            return
 
-        # 3️⃣ Только звук (например, удалённое видео)
-        if data.get("music"):
-            bot.send_audio(
-                user_id,
-                data["music"],
-                caption="🎵 Только звук, фото не удалось получить"
-            )
-            return
-
-        bot.send_message(user_id, "⚠️ Не удалось получить медиа. Попробуй другую ссылку.")
+        else:
+            bot.send_message(user_id, "⚠️ Не удалось получить медиа.")
 
     except Exception as e:
         bot.send_message(user_id, f"⚠️ Ошибка: {e}")
+
+# -------------------- ЗАПУСК --------------------
 
 if __name__ == "__main__":
     WEBHOOK_URL = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"
     bot.remove_webhook()
     bot.set_webhook(url=WEBHOOK_URL)
 
-port = int(os.environ.get("PORT", 5000))
-app.run(host="0.0.0.0", port=port)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
