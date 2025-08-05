@@ -105,7 +105,7 @@ def stats(message):
 def download_tiktok(message):
     user_id = message.chat.id
 
-    # Проверяем подписку перед использованием
+    # Проверяем подписку
     if not is_subscribed(user_id):
         bot.send_message(user_id, "❌ Сначала подпишись на канал, чтобы пользоваться ботом.")
         return
@@ -137,25 +137,28 @@ def download_tiktok(message):
                 data["play"],
                 caption="⚡️ Скачано через:\n@downloader52bot"
             )
+            return
 
         # 2️⃣ Фото-пост (Photo Mode)
-        elif data.get("images"):
-            media_group = [
-                telebot.types.InputMediaPhoto(img)
-                for img in data["images"]
-            ]
+        if data.get("images"):
+            media_group = []
+            for idx, img in enumerate(data["images"]):
+                media_group.append(
+                    telebot.types.InputMediaPhoto(media=img, caption="📸 Фото с TikTok" if idx == 0 else "")
+                )
             bot.send_media_group(user_id, media_group)
+            return
 
         # 3️⃣ Только звук (например, удалённое видео)
-        elif data.get("music"):
+        if data.get("music"):
             bot.send_audio(
                 user_id,
                 data["music"],
                 caption="🎵 Только звук, видео недоступно"
             )
+            return
 
-        else:
-            bot.send_message(user_id, "⚠️ Не удалось получить медиа.")
+        bot.send_message(user_id, "⚠️ Не удалось получить медиа. Попробуй другую ссылку.")
 
     except Exception as e:
         bot.send_message(user_id, f"⚠️ Ошибка: {e}")
