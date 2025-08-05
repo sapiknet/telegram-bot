@@ -2,11 +2,28 @@ import os
 import telebot
 import requests
 from flask import Flask, request
+from telebot import types
 
 TOKEN = os.getenv("BOT_TOKEN")
 bot = telebot.TeleBot(TOKEN)
 
 app = Flask(__name__)
+
+USERS_FILE = "users.txt"
+
+# Загружаем пользователей при запуске
+if os.path.exists(USERS_FILE):
+    with open(USERS_FILE, "r") as f:
+        users = set(f.read().splitlines())
+else:
+    users = set()
+
+def save_user(user_id):
+    """Добавляем пользователя и сохраняем в файл"""
+    if str(user_id) not in users:
+        users.add(str(user_id))
+        with open(USERS_FILE, "a") as f:
+            f.write(f"{user_id}\n")
 
 @app.route('/')
 def home():
@@ -22,17 +39,29 @@ def webhook():
 # Команда /start
 @bot.message_handler(commands=['start'])
 def start(message):
+    save_user(message.chat.id)
+
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard.add(types.KeyboardButton("📊 Статистика"))
+
     bot.send_message(
         message.chat.id,
         '''🎉 Добро пожаловать в TikTok Saver!
 
 ✨ Отправь мне ссылку ТикТок, а я тебе этот видос! 
-'''
+''',
+        reply_markup=keyboard
     )
+
+# Обработка кнопки "Статистика"
+@bot.message_handler(func=lambda m: m.text == "📊 Статистика")
+def stats(message):
+    bot.send_message(message.chat.id, f"👥 Всего пользователей бота: {len(users)}")
 
 # Обработка ссылок TikTok
 @bot.message_handler(func=lambda m: True)
 def download_tiktok(message):
+    save_user(message.chat.id)
     url = message.text.strip()
 
     if "tiktok.com" not in url:
@@ -77,8 +106,7 @@ def download_tiktok(message):
             )
 
         else:
-            # Логируем неизвестный ответ, чтобы понять структуру
-            bot.send_message(message.chat.id, f"⚠️ Не удалось получить медиа.\nОтвет API: {data}")
+            bot.send_message(message.chat.id, "⚠️ Не удалось получить медиа.")
 
     except Exception as e:
         bot.send_message(message.chat.id, f"⚠️ Ошибка: {e}")
